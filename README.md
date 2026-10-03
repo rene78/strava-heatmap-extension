@@ -52,6 +52,29 @@ To enable the Strava Heatmap in the iD editor:
 5. After logging in, use the green extension icon to configure heatmap layers — choose activity type, color, and manage layer order or deletion.
 6. In the editor, press Shift + Q to toggle the heatmap, and Shift + W to toggle data visibility.
 
+#### Slide to Heatmap
+
+With a Strava Heatmap overlay switched on and the extension signed in, an
+existing line can be snapped to the closest trace of that heatmap:
+
+1. Right-click a line (way) in the editor to open the edit menu.
+2. Choose **Slide to Heatmap**, or press Shift + S while the line is selected.
+3. The line's interior vertices slide onto the nearest heatmap trace — the
+   first and last vertex stay put — and the whole change is recorded as a
+   single undoable step (Ctrl/Cmd + Z).
+
+Details worth knowing:
+
+- The action only appears while signed in to Strava; it is greyed out with an
+  explanation when no Strava Heatmap overlay is enabled.
+- The heatmap used is the one currently enabled in the overlay list, so the
+  activity type and color you picked are honoured.
+- Lines longer than about 7 km span more than the 3×3 heatmap tiles the
+  operation fetches and are refused — split the line first.
+- Untagged interior vertices are moved along the trace (new ones are added
+  where the trace needs more detail). Vertices shared with other ways or
+  carrying tags are preserved and snapped onto the resulting line instead.
+
 ---
 
 ### GPX.studio editor
@@ -89,3 +112,20 @@ This extension currently supports the iD editor and [gpx.studio](https://gpx.stu
 
 - For JOSM, check out the [JOSM Strava Heatmap Extension](https://github.com/zekefarwell/josm-strava-heatmap).
 - For RapidId, refer to the [RapId Power User Extension](https://github.com/emersonveenstra/rapid-power-user-extension/).
+
+## Development
+
+```sh
+npm ci         # install the build tooling
+npm test       # Slide feature tests (tile math, engine, way rewrite)
+npm run build  # Chrome and Firefox zips into dist/
+```
+
+The "Slide to Heatmap" feature lives in
+[`src/clients/www.openstreetmap.org/slide/`](./src/clients/www.openstreetmap.org/slide/):
+`geometry.js`, `surface.js` and `slide.js` are a verbatim copy of
+[jsSlide](https://github.com/paulmach/slide)'s JavaScript port, while `tiles.js`
+(heatmap tiles → surface), `action.js` (slid path → iD way), `operation.js`
+(the menu entry) and `install.js` (the `showEditMenu` hook) are the extension's
+own. `src/content/slide-bridge.js` plus `src/background/tiles.js` proxy tile
+requests when the page's own `fetch()` is blocked by CORS or CSP.
