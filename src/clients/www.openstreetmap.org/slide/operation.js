@@ -81,31 +81,24 @@ function flash(context, message, isError) {
 }
 
 /**
- * iD renders `svgIcon(op.icon() || '#iD-operation-' + op.id)` — there is no
+ * iD renders `svgIcon(op.icon() || '#iD-operation-' + op.id)s` — there is no
  * `#iD-operation-slide` sprite symbol, so we ship our own. It has to be
  * (re)injected lazily because `context.ui().restart()` — which the extension
  * triggers whenever imagery changes — wipes the defs container.
  */
 function ensureIconSymbol() {
-  if (typeof document === 'undefined') return;
-  if (document.getElementById(SLIDE_ICON_ID)) return;
+  if (typeof document === 'undefined' || document.getElementById(SLIDE_ICON_ID)) return;
   const defs = document.getElementById('ideditor-defs');
   if (!defs) return;
 
-  const svgNs = 'http://www.w3.org/2000/svg';
-  const symbol = document.createElementNS(svgNs, 'symbol');
-  symbol.id = SLIDE_ICON_ID;
-  symbol.setAttribute('viewBox', '0 0 20 20');
-
-  // A winding trail rendered as a filled ribbon (iD's menu styles `use { fill }`).
-  const path = document.createElementNS(svgNs, 'path');
-  path.setAttribute(
-    'd',
-    'M2 16 L2 13 C5 13 6 5 10 5 C14 5 15 13 18 13 L18 16 ' +
-      'C15 16 14 8 10 8 C6 8 5 16 2 16 Z'
+  // Slide icon
+  defs.insertAdjacentHTML(
+    'beforeend',
+    `<symbol id="${SLIDE_ICON_ID}" viewBox="0 0 3.704 4.233">` +
+      '<path fill="currentColor" d="M1.587.793v.794h-.265l-.264.265.793.793.794-.793-.264-.265h-.265V.793z"/>' +
+      '<path fill="inherit" d="M2.38 4.233c.353 0 .588-.207.72-.34s.162-.19.339-.19h.264v-.528H3.44c-.353 0-.587.206-.72.338s-.162.19-.338.19c-.045 0-.055-.002-.108-.065s-.116-.182-.182-.315-.136-.278-.248-.413-.3-.265-.52-.265c-.353 0-.588.207-.72.34s-.163.19-.34.19H0v.529h.265c.353 0 .587-.207.72-.34s.162-.19.338-.19c.044 0 .055.003.108.067s.116.182.182.314.135.279.248.413.3.265.52.265M3.704.529H0v-.53h3.704z"/>' +
+      '</symbol>'
   );
-  symbol.appendChild(path);
-  defs.appendChild(symbol);
 }
 
 /** Run `session.step()` in ~12 ms slices so iD stays responsive. */
