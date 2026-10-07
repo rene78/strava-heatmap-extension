@@ -19,6 +19,12 @@
  * somebody's nodes is not acceptable in an editor — those nodes fall back to
  * the globally nearest slid point instead.
  *
+ * That guarantee is only load-bearing if matching cannot spend the path
+ * early: each node may not claim a point further along than the nodes after
+ * it can still afford. The original had no such ceiling, so a greedy jump
+ * forward left the tail of the way snapping to points *behind* it and folded
+ * the line back on itself — with a path exactly as long as the way.
+ *
  * The result is a plain `(graph) => graph` function, so iD records it as a
  * single undoable history entry when applied with `context.perform()`.
  *
@@ -79,7 +85,20 @@ export function buildSlideAction(context, wayId, slidLocs) {
 
       let best = -1;
       let bestDistance = Infinity;
-      for (let j = previous + 1; j < pointCount - 1; j++) {
+      // Every node that follows still needs a point of its own, so this one may
+      // not claim one further along than that. Without the ceiling a greedy
+      // jump forward exhausts the path, and every later node hits the fallback
+      // below — the globally nearest point, which is behind the ones already
+      // used, and folds the way back on itself. Measured: a 39-node way on a
+      // 39-point path folded to a 178 deg turn even though the path was "long
+      // enough" by the count operation.js checks.
+      //
+      // The ceiling is only meaningful while pointCount >= nodeCount, which is
+      // exactly what operation.js guarantees; below that it is negative, the
+      // loop stays empty and the old fallback still applies.
+      const ceiling = Math.min(pointCount - 2, pointCount - nodeCount + i);
+
+      for (let j = previous + 1; j <= ceiling; j++) {
         const distance = distanceSqDeg(node.loc, slidLocs[j]);
         if (distance < bestDistance) {
           bestDistance = distance;

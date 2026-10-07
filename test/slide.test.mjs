@@ -504,6 +504,38 @@ await test('never deletes nodes when the slid path is sparser than the way', () 
   }
 });
 
+await test('matching cannot spend the path early and fold the way back', () => {
+  const start = [101.514, 3.37];
+  const end = [101.534, 3.37];
+  const wayNodes = slidLine(start, end, 10);
+  const slidLocs = slidLine([start[0], 3.3695], [end[0], 3.3695], 10);
+
+  // Same length on both sides, so operation.js's "at least as many points as
+  // the way has nodes" holds. One vertex is displaced far ahead of its
+  // neighbours: greedily it claims the last slid point, and everything after
+  // it then snaps to a point *behind* it — the way folds back on itself even
+  // though the path was long enough.
+  wayNodes[5][0] = 101.533;
+
+  const nodeEntities = wayNodes.map((loc) => makeNode(loc));
+  const way = makeWay(
+    'w1',
+    nodeEntities.map((n) => n.id)
+  );
+  const graph = makeGraph([way, ...nodeEntities]);
+
+  const next = buildSlideAction(context, 'w1', slidLocs)(graph);
+  const lons = next.entity('w1').nodes.map((id) => next.entity(id).loc[0]);
+
+  assert.equal(lons.length, 10, 'still ten nodes');
+  for (let i = 1; i < lons.length; i++) {
+    assert.ok(
+      lons[i] >= lons[i - 1],
+      `node ${i} doubled back: ${lons[i - 1]} -> ${lons[i]}`
+    );
+  }
+});
+
 await test('untouched nodes are not rewritten into the graph', () => {
   const start = [101.514, 3.37];
   const end = [101.534, 3.37];
@@ -694,6 +726,42 @@ await test('the shortcut is bound to Shift+S', () => {
   assert.deepEqual(
     keybindings.map((binding) => binding.code),
     ['⇧S']
+  );
+});
+
+await test('finalizeAtLeast eases the tolerance instead of discarding simplify', async () => {
+  const slide = await import(
+    new URL('../src/clients/www.openstreetmap.org/slide/slide.js', import.meta.url).href
+  );
+
+  // A zigzag: the configured tolerance collapses it to its endpoints.
+  const pts = [];
+  for (let i = 0; i < 20; i++) pts.push(i, i % 2 ? 3 : 0);
+  const session = {
+    path: new Float64Array(pts),
+    params: { trimRadius: 0, simplifyTolerance: 100, mercatorScale: 1 },
+  };
+
+  const raw = slide.finalize(session);
+  assert.equal(raw.length / 2, 2, 'the configured tolerance alone keeps 2 points');
+
+  const fitted = slide.finalizeAtLeast(session, 10);
+  assert.ok(
+    fitted.length / 2 >= 10,
+    `the floor keeps at least 10 points (got ${fitted.length / 2})`
+  );
+  assert.ok(
+    fitted.length / 2 > raw.length / 2,
+    'easing keeps more of the zigzag than discarding it'
+  );
+
+  // A floor nobody can meet is the caller's problem, not ours: hand back the
+  // unsimplified path and let the editor decide, as finalizeAtLeast's contract.
+  const impossible = slide.finalizeAtLeast(session, 100);
+  assert.equal(
+    impossible.length / 2,
+    20,
+    'an unreachable floor returns the unsimplified path'
   );
 });
 

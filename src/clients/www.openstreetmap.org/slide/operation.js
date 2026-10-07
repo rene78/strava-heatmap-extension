@@ -13,7 +13,7 @@
  * client script and that watch-storage.js keeps up to date).
  */
 
-import { DEFAULTS, createSession, finalize } from './slide.js';
+import { DEFAULTS, createSession, finalizeAtLeast } from './slide.js';
 import { enabledHeatmapTemplate, loadSurface, tileRange } from './tiles.js';
 import { buildSlideAction } from './action.js';
 
@@ -21,7 +21,7 @@ const SLIDE_SHORTCUT = '⇧S';
 const SLIDE_ICON_ID = 'strava-slide-operation';
 
 /** Metres between adjacent vertices of the slid path handed to the action. */
-function resampleIntervalFor({ cell, totalLength, nodeCount, mercatorScale }) {
+export function resampleIntervalFor({ cell, totalLength, nodeCount, mercatorScale }) {
   // jsSlide tuned 5 m on a 2.39 m/px tile (~2 px); keep that bead spacing
   // whatever resolution the server ends up sending us.
   const desired = Math.max(DEFAULTS.resampleInterval, 2 * cell);
@@ -230,11 +230,12 @@ export function makeSlideOperation(context, getState, runtime) {
 
       const session = createSession(surface, smooth, points, params);
       await runSession(session);
-      let slid = finalize(session);
+      // The coarsest simplification that still gives every node a slid point
+      // of its own. Only when even that comes out short — the bead path would
+      // have to be coarser than the way, which resampleIntervalFor exists to
+      // prevent — do we hand over the path as it came out of the session.
+      let slid = finalizeAtLeast(session, locs.length);
       if (slid.length / 2 < locs.length) {
-        // Douglas-Peucker simplified the result below the way's own vertex
-        // count — fall back to the unsimplified path so every node can claim
-        // a slid point.
         slid = session.path;
       }
       if (slid.length / 2 < 3 && locs.length > 2) {

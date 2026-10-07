@@ -15,7 +15,13 @@
  * Loop until the exponentially smoothed average surface value stops changing.
  */
 
-import { pathDistance, resampleEven, resampleInterval, douglasPeucker, trimEnds } from './geometry.js';
+import {
+  pathDistance,
+  resampleEven,
+  resampleInterval,
+  douglasPeucker,
+  trimEnds
+} from './geometry.js';
 
 /** Defaults mirror slide.New() + the stravaheat SuggestedOptions. */
 export const DEFAULTS = {
@@ -45,7 +51,7 @@ export const DEFAULTS = {
    */
   gradientPerCell: true,
   trimRadius: 0, // metres, 0 = off (Go uses 15)
-  simplifyTolerance: 1, // metres, 0 = off
+  simplifyTolerance: 2, // metres, 0 = off
   ghostCount: 200, // intermediate snapshots kept for the replay animation
   mercatorScale: 1.001733, // 1 / cos(centre latitude)
 };
@@ -236,7 +242,8 @@ export function createSession(surface, smooth, ptsMeters, params) {
 }
 
 /** Trim + simplify the converged path, matching Slide.Do()'s GeoReduce step. */
-export function finalize(session) {
+/** Trim a finished session, then simplify it at an explicit tolerance. */
+function finalizeAt(session, simplifyTolerance) {
   const { params } = session;
   let out = session.path;
   if (params.trimRadius > 0) {
@@ -245,8 +252,55 @@ export function finalize(session) {
     out = resampleInterval(out, 2 * ms);
     out = trimEnds(out, params.trimRadius * ms);
   }
-  if (params.simplifyTolerance > 0) {
-    out = douglasPeucker(out, params.simplifyTolerance * params.mercatorScale);
+  if (simplifyTolerance > 0) {
+    out = douglasPeucker(out, simplifyTolerance * params.mercatorScale);
   }
   return out;
+}
+
+export function finalize(session) {
+  return finalizeAt(session, session.params.simplifyTolerance);
+}
+
+/**
+ * Trim and simplify with the coarsest tolerance that still leaves at least
+ * `minPoints` vertices — the way's own node count, in practice.
+ *
+ * The action needs one slid point per way node, so a path shorter than the way
+ * leaves some nodes with nowhere to go. Handing back the raw bead path in that
+ * case — what this did before — threw away the *whole* simplification: every
+ * kink the path had, plus the ones the slide introduced. The output count
+ * depends on the path and the tolerance, not on how many nodes the way has, so
+ * it tripped more often the denser the way: it hit exactly the lines asking
+ * for help, and it hit them by a cliff. On a 39-node way, tolerance 1.5 gave
+ * 55 vertices and 2 gave 149.
+ *
+ * Bisecting keeps as much of the simplification as the way allows. Vertex
+ * count is non-increasing in tolerance, so the search is monotone, and
+ * tolerance 0 always qualifies: `resampleIntervalFor` sizes the bead path at
+ * least as densely as the way, so the unsimplified path has points to spare.
+ *
+ * @param {object} session
+ * @param {number} minPoints vertices the result must not fall below
+ * @returns {Float64Array}
+ */
+export function finalizeAtLeast(session, minPoints) {
+  const target = session.params.simplifyTolerance;
+  let best = finalizeAt(session, target);
+  if (best.length / 2 >= minPoints) return best; // the ordinary case
+
+  let lo = 0;
+  let hi = target;
+  best = finalizeAt(session, 0);
+  for (let i = 0; i < 16; i++) {
+    const mid = (lo + hi) / 2;
+    const candidate = finalizeAt(session, mid);
+    if (candidate.length / 2 >= minPoints) {
+      lo = mid;
+      best = candidate;
+    } else {
+      hi = mid;
+    }
+  }
+  return best;
 }

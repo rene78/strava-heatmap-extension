@@ -3,3 +3,6 @@
 
 node_modules/
 dist/*
+
+# macOS folder metadata — shows up wherever Finder has visited
+.DS_Store
